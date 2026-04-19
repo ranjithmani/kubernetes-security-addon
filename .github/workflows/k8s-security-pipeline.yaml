@@ -148,6 +148,8 @@ jobs:
 
       - name: Validate inventory
         working-directory: ansible
+        env:
+          ANSIBLE_ROLES_PATH: ./roles
         run: |
           ansible-inventory \
             -i /tmp/inventory.yml \
@@ -155,6 +157,8 @@ jobs:
 
       - name: Run playbook on cp-node-1 ${{ github.event.inputs.dry_run == 'true' && '(DRY RUN)' || '' }}
         working-directory: ansible
+        env:
+          ANSIBLE_ROLES_PATH: ./roles
         run: |
           ansible-playbook playbooks/etcd-encryption.yml \
             -i /tmp/inventory.yml \
@@ -166,6 +170,8 @@ jobs:
       - name: Verify apiserver is healthy on cp-node-1
         if: github.event.inputs.dry_run == 'false'
         working-directory: ansible
+        env:
+          ANSIBLE_ROLES_PATH: ./roles
         run: |
           ansible control_plane_nodes \
             -i /tmp/inventory.yml \
@@ -231,6 +237,8 @@ jobs:
 
       - name: Run playbook on cp-node-2 ${{ github.event.inputs.dry_run == 'true' && '(DRY RUN)' || '' }}
         working-directory: ansible
+        env:
+          ANSIBLE_ROLES_PATH: ./roles
         run: |
           ansible-playbook playbooks/etcd-encryption.yml \
             -i /tmp/inventory.yml \
@@ -306,6 +314,8 @@ jobs:
 
       - name: Run playbook on cp-node-3 ${{ github.event.inputs.dry_run == 'true' && '(DRY RUN)' || '' }}
         working-directory: ansible
+        env:
+          ANSIBLE_ROLES_PATH: ./roles
         run: |
           ansible-playbook playbooks/etcd-encryption.yml \
             -i /tmp/inventory.yml \
@@ -440,6 +450,8 @@ jobs:
 
       - name: Run Cilium network policy playbook
         working-directory: ansible
+        env:
+          ANSIBLE_ROLES_PATH: ./roles
         run: |
           ansible-playbook playbooks/cilium-network-policy.yml \
             --extra-vars "cluster_name=${{ github.event.inputs.cluster_name }}" \
