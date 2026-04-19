@@ -112,10 +112,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Ansible
-        run: |
-          pip install ansible==9.3.0 --quiet
-
       - name: Write SSH private key
         run: |
           echo "${{ secrets.EKSA_SSH_PRIVATE_KEY }}" > /tmp/eksa_ssh_key
@@ -202,9 +198,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Ansible
-        run: pip install ansible==9.3.0 --quiet
-
       - name: Write SSH private key
         run: |
           echo "${{ secrets.EKSA_SSH_PRIVATE_KEY }}" > /tmp/eksa_ssh_key
@@ -278,9 +271,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Install Ansible
-        run: pip install ansible==9.3.0 --quiet
 
       - name: Write SSH private key
         run: |
@@ -360,8 +350,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Ansible
-        run: pip install ansible==9.3.0 --quiet
 
       - name: Write SSH private key
         run: |
@@ -440,8 +428,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Ansible
-        run: pip install ansible==9.3.0 --quiet
 
       - name: Write kubeconfig
         run: |
