@@ -1,0 +1,477 @@
+name: Security pipeline
+
+on:
+  workflow_dispatch:                  # manual trigger only - safety measure
+    inputs:
+      dry_run:
+        description: "Dry run (check mode) - no changes applied"
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      cluster_size:
+        description: "Cluster topology — number of control plane nodes"
+        required: true
+        default: "3-node"
+        type: choice
+        options:
+          - "1-node"
+          - "3-node"
+      target_node:
+        description: "Target specific node or all (3-node clusters only)"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - "all"
+          - "cp-node-1"
+          - "cp-node-2"
+          - "cp-node-3"
+      cp_node_1_ip:
+        description: "IP address of cp-node-1"
+        required: true
+        type: string
+      cp_node_2_ip:
+        description: "IP address of cp-node-2 (3-node clusters only)"
+        required: false
+        type: string
+      cp_node_3_ip:
+        description: "IP address of cp-node-3 (3-node clusters only)"
+        required: false
+        type: string
+      cluster_name:
+        description: "Cluster name (used by Azure Arc and Cilium roles)"
+        required: true
+        type: string
+
+env:
+  ANSIBLE_FORCE_COLOR: "1"
+  ANSIBLE_HOST_KEY_CHECKING: "False"
+  ANSIBLE_STDOUT_CALLBACK: "yaml"
+
+jobs:
+  # -------------------------------------------------------
+  # JOB 1 - Validate inputs and secrets before doing anything
+  # -------------------------------------------------------
+  preflight:
+    name: Preflight Checks
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.validate.outputs.proceed }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate required secrets exist
+        id: validate
+        run: |
+          missing=""
+          [ -z "${{ secrets.ETCD_ENCRYPTION_KEY }}" ]    && missing="$missing ETCD_ENCRYPTION_KEY"
+          [ -z "${{ secrets.EKSA_SSH_PRIVATE_KEY }}" ]  && missing="$missing EKSA_SSH_PRIVATE_KEY"
+
+          if [ -n "$missing" ]; then
+            echo "❌ Missing required secrets:$missing"
+            exit 1
+          fi
+
+          echo "✅ All required secrets present"
+          echo "proceed=true" >> $GITHUB_OUTPUT
+
+      - name: Show run parameters
+        run: |
+          echo "🖥️  Cluster size : ${{ github.event.inputs.cluster_size }}"
+          echo "🎯 Target node  : ${{ github.event.inputs.target_node }}"
+          echo "🔍 Dry run      : ${{ github.event.inputs.dry_run }}"
+          echo "📡 cp-node-1 IP : ${{ github.event.inputs.cp_node_1_ip }}"
+          echo "📡 cp-node-2 IP : ${{ github.event.inputs.cp_node_2_ip }}"
+          echo "📡 cp-node-3 IP : ${{ github.event.inputs.cp_node_3_ip }}"
+          echo "🔖 Cluster name : ${{ github.event.inputs.cluster_name }}"
+          echo "👤 Triggered by : ${{ github.actor }}"
+          echo "📅 Run time     : $(date -u)"
+
+  # -------------------------------------------------------
+  # JOB 2 - Run playbook serially, one node at a time
+  # -------------------------------------------------------
+  encrypt-cp-node-1:
+    name: "Node 1 — ${{ github.event.inputs.cp_node_1_ip }}"
+    runs-on: ubuntu-latest
+    needs: preflight
+    if: |
+      needs.preflight.outputs.proceed == 'true' &&
+      (
+        github.event.inputs.cluster_size == '1-node' ||
+        github.event.inputs.target_node == 'all' ||
+        github.event.inputs.target_node == 'cp-node-1'
+      )
+    environment: production              # requires manual approval in GitHub
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Ansible
+        run: |
+          pip install ansible==9.3.0 --quiet
+
+      - name: Write SSH private key
+        run: |
+          echo "${{ secrets.EKSA_SSH_PRIVATE_KEY }}" > /tmp/eksa_ssh_key
+          chmod 600 /tmp/eksa_ssh_key
+
+      - name: Write dynamic inventory
+        run: |
+          cat > /tmp/inventory.yml << EOF
+          all:
+            children:
+              control_plane_nodes:
+                hosts:
+                  cp-node-1:
+                    ansible_host: ${{ github.event.inputs.cp_node_1_ip }}
+                  cp-node-2:
+                    ansible_host: ${{ github.event.inputs.cp_node_2_ip }}
+                  cp-node-3:
+                    ansible_host: ${{ github.event.inputs.cp_node_3_ip }}
+                vars:
+                  ansible_user: ec2-user
+                  ansible_ssh_private_key_file: /tmp/eksa_ssh_key
+                  ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+          EOF
+          chmod 600 /tmp/inventory.yml
+
+      - name: Write extra vars file
+        run: |
+          echo "encryption_key: ${{ secrets.ETCD_ENCRYPTION_KEY }}" > /tmp/extra_vars.yml
+          chmod 600 /tmp/extra_vars.yml
+
+      - name: Validate inventory
+        working-directory: ansible
+        run: |
+          ansible-inventory \
+            -i /tmp/inventory.yml \
+            --list | python3 -c "import sys,json; d=json.load(sys.stdin); print('✅ Inventory OK')"
+
+      - name: Run playbook on cp-node-1 ${{ github.event.inputs.dry_run == 'true' && '(DRY RUN)' || '' }}
+        working-directory: ansible
+        run: |
+          ansible-playbook playbooks/etcd-encryption.yml \
+            -i /tmp/inventory.yml \
+            --extra-vars "@/tmp/extra_vars.yml" \
+            --limit cp-node-1 \
+            -v \
+            ${{ github.event.inputs.dry_run == 'true' && '--check --diff' || '' }}
+
+      - name: Verify apiserver is healthy on cp-node-1
+        if: github.event.inputs.dry_run == 'false'
+        working-directory: ansible
+        run: |
+          ansible control_plane_nodes \
+            -i /tmp/inventory.yml \
+            --limit cp-node-1 \
+            -m uri \
+            -a "url=https://${{ github.event.inputs.cp_node_1_ip }}:6443/healthz \
+                validate_certs=no \
+                status_code=200" \
+            -b
+
+      - name: Cleanup sensitive files
+        if: always()
+        run: |
+          rm -f /tmp/eksa_ssh_key /tmp/extra_vars.yml /tmp/inventory.yml
+
+  # -------------------------------------------------------
+  encrypt-cp-node-2:
+    name: "Node 2 — ${{ github.event.inputs.cp_node_2_ip }}"
+    runs-on: ubuntu-latest
+    needs: [preflight, encrypt-cp-node-1]     # waits for node 1 to finish
+    if: |
+      needs.preflight.outputs.proceed == 'true' &&
+      github.event.inputs.cluster_size == '3-node' &&
+      (github.event.inputs.target_node == 'all' || github.event.inputs.target_node == 'cp-node-2')
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Ansible
+        run: pip install ansible==9.3.0 --quiet
+
+      - name: Write SSH private key
+        run: |
+          echo "${{ secrets.EKSA_SSH_PRIVATE_KEY }}" > /tmp/eksa_ssh_key
+          chmod 600 /tmp/eksa_ssh_key
+
+      - name: Write dynamic inventory
+        run: |
+          cat > /tmp/inventory.yml << EOF
+          all:
+            children:
+              control_plane_nodes:
+                hosts:
+                  cp-node-1:
+                    ansible_host: ${{ github.event.inputs.cp_node_1_ip }}
+                  cp-node-2:
+                    ansible_host: ${{ github.event.inputs.cp_node_2_ip }}
+                  cp-node-3:
+                    ansible_host: ${{ github.event.inputs.cp_node_3_ip }}
+                vars:
+                  ansible_user: ec2-user
+                  ansible_ssh_private_key_file: /tmp/eksa_ssh_key
+                  ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+          EOF
+          chmod 600 /tmp/inventory.yml
+
+      - name: Write extra vars file
+        run: |
+          echo "encryption_key: ${{ secrets.ETCD_ENCRYPTION_KEY }}" > /tmp/extra_vars.yml
+          chmod 600 /tmp/extra_vars.yml
+
+      - name: Run playbook on cp-node-2 ${{ github.event.inputs.dry_run == 'true' && '(DRY RUN)' || '' }}
+        working-directory: ansible
+        run: |
+          ansible-playbook playbooks/etcd-encryption.yml \
+            -i /tmp/inventory.yml \
+            --extra-vars "@/tmp/extra_vars.yml" \
+            --limit cp-node-2 \
+            -v \
+            ${{ github.event.inputs.dry_run == 'true' && '--check --diff' || '' }}
+
+      - name: Verify apiserver is healthy on cp-node-2
+        if: github.event.inputs.dry_run == 'false'
+        working-directory: ansible
+        run: |
+          ansible control_plane_nodes \
+            -i /tmp/inventory.yml \
+            --limit cp-node-2 \
+            -m uri \
+            -a "url=https://${{ github.event.inputs.cp_node_2_ip }}:6443/healthz \
+                validate_certs=no \
+                status_code=200" \
+            -b
+
+      - name: Cleanup sensitive files
+        if: always()
+        run: rm -f /tmp/eksa_ssh_key /tmp/extra_vars.yml /tmp/inventory.yml
+
+  # -------------------------------------------------------
+  encrypt-cp-node-3:
+    name: "Node 3 — ${{ github.event.inputs.cp_node_3_ip }}"
+    runs-on: ubuntu-latest
+    needs: [preflight, encrypt-cp-node-2]     # waits for node 2 to finish
+    if: |
+      needs.preflight.outputs.proceed == 'true' &&
+      github.event.inputs.cluster_size == '3-node' &&
+      (github.event.inputs.target_node == 'all' || github.event.inputs.target_node == 'cp-node-3')
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Ansible
+        run: pip install ansible==9.3.0 --quiet
+
+      - name: Write SSH private key
+        run: |
+          echo "${{ secrets.EKSA_SSH_PRIVATE_KEY }}" > /tmp/eksa_ssh_key
+          chmod 600 /tmp/eksa_ssh_key
+
+      - name: Write dynamic inventory
+        run: |
+          cat > /tmp/inventory.yml << EOF
+          all:
+            children:
+              control_plane_nodes:
+                hosts:
+                  cp-node-1:
+                    ansible_host: ${{ github.event.inputs.cp_node_1_ip }}
+                  cp-node-2:
+                    ansible_host: ${{ github.event.inputs.cp_node_2_ip }}
+                  cp-node-3:
+                    ansible_host: ${{ github.event.inputs.cp_node_3_ip }}
+                vars:
+                  ansible_user: ec2-user
+                  ansible_ssh_private_key_file: /tmp/eksa_ssh_key
+                  ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+          EOF
+          chmod 600 /tmp/inventory.yml
+
+      - name: Write extra vars file
+        run: |
+          echo "encryption_key: ${{ secrets.ETCD_ENCRYPTION_KEY }}" > /tmp/extra_vars.yml
+          chmod 600 /tmp/extra_vars.yml
+
+      - name: Run playbook on cp-node-3 ${{ github.event.inputs.dry_run == 'true' && '(DRY RUN)' || '' }}
+        working-directory: ansible
+        run: |
+          ansible-playbook playbooks/etcd-encryption.yml \
+            -i /tmp/inventory.yml \
+            --extra-vars "@/tmp/extra_vars.yml" \
+            --limit cp-node-3 \
+            -v \
+            ${{ github.event.inputs.dry_run == 'true' && '--check --diff' || '' }}
+
+      - name: Verify apiserver is healthy on cp-node-3
+        if: github.event.inputs.dry_run == 'false'
+        working-directory: ansible
+        run: |
+          ansible control_plane_nodes \
+            -i /tmp/inventory.yml \
+            --limit cp-node-3 \
+            -m uri \
+            -a "url=https://${{ github.event.inputs.cp_node_3_ip }}:6443/healthz \
+                validate_certs=no \
+                status_code=200" \
+            -b
+
+      - name: Cleanup sensitive files
+        if: always()
+        run: rm -f /tmp/eksa_ssh_key /tmp/extra_vars.yml /tmp/inventory.yml
+
+  # -------------------------------------------------------
+  # JOB 3 - Post-run: re-encrypt existing secrets (run once)
+  # -------------------------------------------------------
+  reencrypt-secrets:
+    name: Re-encrypt Pre-existing Secrets
+    runs-on: ubuntu-latest
+    needs: [encrypt-cp-node-1, encrypt-cp-node-2, encrypt-cp-node-3]
+    if: |
+      always() &&
+      needs.encrypt-cp-node-1.result == 'success' &&
+      (needs.encrypt-cp-node-2.result == 'success' || needs.encrypt-cp-node-2.result == 'skipped') &&
+      (needs.encrypt-cp-node-3.result == 'success' || needs.encrypt-cp-node-3.result == 'skipped') &&
+      github.event.inputs.dry_run == 'false' &&
+      (github.event.inputs.cluster_size == '1-node' || github.event.inputs.target_node == 'all')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Ansible
+        run: pip install ansible==9.3.0 --quiet
+
+      - name: Write SSH private key
+        run: |
+          echo "${{ secrets.EKSA_SSH_PRIVATE_KEY }}" > /tmp/eksa_ssh_key
+          chmod 600 /tmp/eksa_ssh_key
+
+      - name: Write dynamic inventory
+        run: |
+          cat > /tmp/inventory.yml << EOF
+          all:
+            children:
+              control_plane_nodes:
+                hosts:
+                  cp-node-1:
+                    ansible_host: ${{ github.event.inputs.cp_node_1_ip }}
+                  cp-node-2:
+                    ansible_host: ${{ github.event.inputs.cp_node_2_ip }}
+                  cp-node-3:
+                    ansible_host: ${{ github.event.inputs.cp_node_3_ip }}
+                vars:
+                  ansible_user: ec2-user
+                  ansible_ssh_private_key_file: /tmp/eksa_ssh_key
+                  ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+          EOF
+          chmod 600 /tmp/inventory.yml
+
+      - name: Write extra vars file
+        run: |
+          echo "encryption_key: ${{ secrets.ETCD_ENCRYPTION_KEY }}" > /tmp/extra_vars.yml
+          chmod 600 /tmp/extra_vars.yml
+
+      - name: Re-encrypt all existing secrets
+        working-directory: ansible
+        run: |
+          ansible control_plane_nodes \
+            -i /tmp/inventory.yml \
+            --limit cp-node-1 \
+            -m shell \
+            -a "kubectl get secrets --all-namespaces -o json | kubectl replace -f -" \
+            -b
+        # Only runs from one node — kubectl replace is cluster-wide
+
+      - name: Verify a sample secret is encrypted in etcd
+        working-directory: ansible
+        run: |
+          ansible control_plane_nodes \
+            -i /tmp/inventory.yml \
+            --limit cp-node-1 \
+            -m shell \
+            -a >
+              "ETCDCTL_API=3 etcdctl
+              --cert=/etc/kubernetes/pki/apiserver-etcd-client.crt
+              --key=/etc/kubernetes/pki/apiserver-etcd-client.key
+              --cacert=/etc/kubernetes/pki/etcd/ca.crt
+              get /registry/secrets/default/test-etcd-encryption |
+              strings | grep -c 'k8s:enc:aescbc:v1:key1'" \
+            -b
+
+      - name: Cleanup sensitive files
+        if: always()
+        run: rm -f /tmp/eksa_ssh_key /tmp/extra_vars.yml /tmp/inventory.yml
+
+
+  # -------------------------------------------------------
+  # JOB 4 - Cilium network policy (runs after Azure Arc RBAC)
+  # -------------------------------------------------------
+  apply-cilium-policy:
+    name: Apply Cilium Network Policy
+    runs-on: ubuntu-latest
+    needs: [reencrypt-secrets]
+    if: |
+      always() &&
+      needs.reencrypt-secrets.result == 'success'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Ansible
+        run: pip install ansible==9.3.0 --quiet
+
+      - name: Write kubeconfig
+        run: |
+          echo "${{ secrets.KUBECONFIG_CONTENT }}" | base64 -d > /tmp/kubeconfig
+          chmod 600 /tmp/kubeconfig
+
+      - name: Run Cilium network policy playbook
+        working-directory: ansible
+        run: |
+          ansible-playbook playbooks/cilium-network-policy.yml \
+            --extra-vars "cluster_name=${{ github.event.inputs.cluster_name }}" \
+            -v
+
+      - name: Cleanup sensitive files
+        if: always()
+        run: rm -f /tmp/kubeconfig
+
+  # -------------------------------------------------------
+  # JOB 6 - Summary
+  # -------------------------------------------------------
+  summary:
+    name: Pipeline Summary
+    runs-on: ubuntu-latest
+    needs: [encrypt-cp-node-1, encrypt-cp-node-2, encrypt-cp-node-3, apply-cilium-policy]
+    if: always()
+
+    steps:
+      - name: Print summary
+        run: |
+          echo "### etcd Encryption Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Parameter | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Cluster size | ${{ github.event.inputs.cluster_size }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Cluster name | ${{ github.event.inputs.cluster_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dry Run      | ${{ github.event.inputs.dry_run }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Triggered by | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| cp-node-1 (etcd encrypt)  | ${{ needs.encrypt-cp-node-1.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| cp-node-2 (etcd encrypt)  | ${{ needs.encrypt-cp-node-2.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| cp-node-3 (etcd encrypt)  | ${{ needs.encrypt-cp-node-3.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Cilium Network Policy     | ${{ needs.apply-cilium-policy.result }} |" >> $GITHUB_STEP_SUMMARY
