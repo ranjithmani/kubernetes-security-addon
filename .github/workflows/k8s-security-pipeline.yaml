@@ -135,7 +135,7 @@ jobs:
                   cp-node-3:
                     ansible_host: ${{ github.event.inputs.cp_node_3_ip }}
                 vars:
-                  ansible_user: ec2-user
+                  ansible_user: ubuntu
                   ansible_ssh_private_key_file: /tmp/eksa_ssh_key
                   ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
           EOF
@@ -390,7 +390,7 @@ jobs:
             -i /tmp/inventory.yml \
             --limit cp-node-1 \
             -m shell \
-            -a "kubectl get secrets --all-namespaces -o json | kubectl replace -f -" \
+            -a "kubectl get secrets --all-namespaces -o json --kubeconfig=/etc/kubernetes/admin.conf | kubectl replace -f - --kubeconfig=/etc/kubernetes/admin.conf" \
             -b
         # Only runs from one node — kubectl replace is cluster-wide
 
