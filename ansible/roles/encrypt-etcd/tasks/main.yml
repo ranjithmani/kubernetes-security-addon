@@ -44,7 +44,7 @@
   when: flag_check.rc != 0
 
 - name: Validate patched manifest is valid YAML
-  command: >
+  shell: |
     python3 -c "
     import yaml
     with open('{{ apiserver_manifest }}') as f:
