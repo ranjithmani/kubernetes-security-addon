@@ -1,0 +1,75 @@
+---
+# Apply Cilium deny policy for node network access
+
+- name: Display policy configuration
+  ansible.builtin.debug:
+    msg: |
+      Cluster: {{ cluster_name }}
+      Policy: {{ policy_name }}
+      Exempt namespaces: {{ exempt_namespaces | join(', ') }}
+
+- name: Verify Cilium is installed
+  ansible.builtin.command: kubectl get crd ciliumclusterwidenetworkpolicies.cilium.io
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: cilium_crd_check
+  changed_when: false
+  failed_when: false
+
+- name: Fail if Cilium is not installed
+  ansible.builtin.fail:
+    msg: "Cilium CRDs not found. Please install Cilium before applying this policy."
+  when: cilium_crd_check.rc != 0
+
+- name: Apply CiliumClusterwideNetworkPolicy
+  ansible.builtin.shell: |
+    cat <<'EOF' | kubectl apply -f -
+    apiVersion: cilium.io/v2
+    kind: CiliumClusterwideNetworkPolicy
+    metadata:
+      name: {{ policy_name }}
+    spec:
+      description: "Allow pods, internet (excluding private networks), and API server only"
+      endpointSelector:
+        matchExpressions:
+        - key: io.kubernetes.pod.namespace
+          operator: NotIn
+          values:
+    {% for ns in exempt_namespaces %}
+          - {{ ns }}
+    {% endfor %}
+      egress:
+      # Allow pod-to-pod
+      - toEndpoints:
+        - {}
+      # Allow internet, block all private networks
+      - toCIDRSet:
+        - cidr: 0.0.0.0/0
+          except:
+    {% for cidr in deny_cidrs %}
+          - {{ cidr }}
+    {% endfor %}
+      # Allow only API server port to cluster nodes
+      - toEntities:
+        - host
+        - remote-node
+        toPorts:
+        - ports:
+          - port: "{{ api_server_port }}"
+            protocol: TCP
+    EOF
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: policy_apply
+  changed_when: "'created' in policy_apply.stdout or 'configured' in policy_apply.stdout"
+
+- name: Verify policy is applied
+  ansible.builtin.command: kubectl get ciliumclusterwidenetworkpolicy {{ policy_name }}
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: policy_check
+  changed_when: false
+
+- name: Policy applied successfully
+  ansible.builtin.debug:
+    msg: "CiliumClusterwideNetworkPolicy '{{ policy_name }}' applied successfully"

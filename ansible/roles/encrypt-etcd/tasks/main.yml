@@ -1,0 +1,90 @@
+---
+- name: Create encryption config directory
+  file:
+    path: "{{ enc_config_dir }}"
+    state: directory
+    mode: '0700'
+    owner: root
+    group: root
+
+- name: Write EncryptionConfiguration
+  template:
+    src: encryption-config.yaml.j2
+    dest: "{{ enc_config_path }}"
+    mode: '0600'
+    owner: root
+    group: root
+  register: enc_config_written
+
+- name: Check if encryption flag already present in apiserver manifest
+  command: grep -q "encryption-provider-config" "{{ apiserver_manifest }}"
+  register: flag_check
+  failed_when: false
+  changed_when: false
+
+- name: Install PyYAML on control plane node
+  package:
+    name: python3-yaml
+    state: present
+
+- name: Copy manifest patcher script
+  copy:
+    src: patch_apiserver.py
+    dest: /tmp/patch_apiserver.py
+    mode: '0700'
+
+- name: Patch kube-apiserver manifest (YAML-safe)
+  command: python3 /tmp/patch_apiserver.py {{ enc_config_path }}
+  register: patch_output
+  when: flag_check.rc != 0
+
+- name: Show patch output
+  debug:
+    var: patch_output.stdout_lines
+  when: flag_check.rc != 0
+
+- name: Validate patched manifest is valid YAML
+  command: >
+    python3 -c "
+    import yaml
+    with open('{{ apiserver_manifest }}') as f:
+        yaml.safe_load(f)
+    print('YAML_VALID')
+    "
+  register: yaml_check
+  when: flag_check.rc != 0
+
+- name: Abort — restore backup if YAML is invalid
+  block:
+    - name: Find latest backup
+      shell: ls -t /etc/kubernetes/manifests/kube-apiserver.yaml.bak.* | head -1
+      register: latest_backup
+
+    - name: Restore backup
+      copy:
+        src: "{{ latest_backup.stdout }}"
+        dest: "{{ apiserver_manifest }}"
+        remote_src: true
+
+    - name: Fail with message
+      fail:
+        msg: "Manifest YAML invalid after patching — restored from {{ latest_backup.stdout }}"
+  when:
+    - flag_check.rc != 0
+    - "'YAML_VALID' not in yaml_check.stdout"
+
+- name: Wait for kube-apiserver to restart (kubelet detects manifest change)
+  wait_for:
+    port: 6443
+    delay: 15
+    timeout: 120
+  when: patch_output.changed or enc_config_written.changed
+
+- name: Verify kube-apiserver is healthy
+  command: kubectl get --raw /healthz
+  register: health_check
+  retries: 5
+  delay: 10
+  until: health_check.stdout == "ok"
+  delegate_to: "{{ groups['control_plane_nodes'][0] }}"
+  run_once: true

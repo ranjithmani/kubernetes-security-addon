@@ -1,0 +1,19 @@
+---
+# Namespaces exempt from the deny policy
+exempt_namespaces:
+  - kube-system
+  - kube-public
+  - kube-node-lease
+  - cilium
+
+# Private network CIDRs to block (RFC1918)
+deny_cidrs:
+  - 10.0.0.0/8
+  - 172.16.0.0/12
+  - 192.168.0.0/16
+
+# API server port (allowed to cluster nodes)
+api_server_port: "6443"
+
+# Policy name
+policy_name: "deny-node-network"

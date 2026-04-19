@@ -1,0 +1,10 @@
+---
+- name: Enable etcd encryption for Kubernetes Secrets
+  hosts: control_plane_nodes
+  become: true
+  vars:
+    enc_config_dir: /etc/kubernetes/enc
+    enc_config_path: /etc/kubernetes/enc/encryption-config.yaml
+    apiserver_manifest: /etc/kubernetes/manifests/kube-apiserver.yaml
+  roles:
+    - encrypt-etcd

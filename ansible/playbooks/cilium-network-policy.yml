@@ -1,0 +1,12 @@
+---
+# Apply Cilium CiliumClusterwideNetworkPolicy to deny node-network access.
+# Runs on the GitHub Actions runner (localhost) using kubectl.
+# Requires: kubectl available, /tmp/kubeconfig written.
+- name: Apply Cilium deny-node-network policy
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    kubeconfig_path: /tmp/kubeconfig
+  roles:
+    - cilium-deny-node-network
