@@ -57,7 +57,7 @@ jobs:
   # -------------------------------------------------------
   preflight:
     name: Preflight Checks
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     outputs:
       proceed: ${{ steps.validate.outputs.proceed }}
 
@@ -97,7 +97,7 @@ jobs:
   # -------------------------------------------------------
   encrypt-cp-node-1:
     name: "Node 1 — ${{ github.event.inputs.cp_node_1_ip }}"
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: preflight
     if: |
       needs.preflight.outputs.proceed == 'true' &&
@@ -190,7 +190,7 @@ jobs:
   # -------------------------------------------------------
   encrypt-cp-node-2:
     name: "Node 2 — ${{ github.event.inputs.cp_node_2_ip }}"
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: [preflight, encrypt-cp-node-1]     # waits for node 1 to finish
     if: |
       needs.preflight.outputs.proceed == 'true' &&
@@ -267,7 +267,7 @@ jobs:
   # -------------------------------------------------------
   encrypt-cp-node-3:
     name: "Node 3 — ${{ github.event.inputs.cp_node_3_ip }}"
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: [preflight, encrypt-cp-node-2]     # waits for node 2 to finish
     if: |
       needs.preflight.outputs.proceed == 'true' &&
@@ -346,7 +346,7 @@ jobs:
   # -------------------------------------------------------
   reencrypt-secrets:
     name: Re-encrypt Pre-existing Secrets
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: [encrypt-cp-node-1, encrypt-cp-node-2, encrypt-cp-node-3]
     if: |
       always() &&
@@ -430,7 +430,7 @@ jobs:
   # -------------------------------------------------------
   apply-cilium-policy:
     name: Apply Cilium Network Policy
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: [reencrypt-secrets]
     if: |
       always() &&
@@ -466,7 +466,7 @@ jobs:
   # -------------------------------------------------------
   summary:
     name: Pipeline Summary
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: [encrypt-cp-node-1, encrypt-cp-node-2, encrypt-cp-node-3, apply-cilium-policy]
     if: always()
 
