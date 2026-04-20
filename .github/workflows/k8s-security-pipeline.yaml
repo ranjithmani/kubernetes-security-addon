@@ -42,7 +42,7 @@ on:
         required: false
         type: string
       cluster_name:
-        description: "Cluster name (used by Azure Arc and Cilium roles)"
+        description: "Cluster name ( Cilium roles)"
         required: true
         type: string
 
@@ -112,11 +112,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Write SSH private key
-        run: |
-          echo "${{ secrets.EKSA_SSH_PRIVATE_KEY }}" > /tmp/eksa_ssh_key
-          chmod 600 /tmp/eksa_ssh_key
-
       - name: Write dynamic inventory
         run: |
           cat > /tmp/inventory.yml << EOF
@@ -131,8 +126,7 @@ jobs:
                   cp-node-3:
                     ansible_host: ${{ github.event.inputs.cp_node_3_ip }}
                 vars:
-                  ansible_user: ubuntu
-                  ansible_ssh_private_key_file: /tmp/eksa_ssh_key
+                  ansible_user: stack
                   ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
           EOF
           chmod 600 /tmp/inventory.yml
@@ -198,10 +192,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Write SSH private key
-        run: |
-          echo "${{ secrets.EKSA_SSH_PRIVATE_KEY }}" > /tmp/eksa_ssh_key
-          chmod 600 /tmp/eksa_ssh_key
 
       - name: Write dynamic inventory
         run: |
@@ -217,8 +207,7 @@ jobs:
                   cp-node-3:
                     ansible_host: ${{ github.event.inputs.cp_node_3_ip }}
                 vars:
-                  ansible_user: ubuntu
-                  ansible_ssh_private_key_file: /tmp/eksa_ssh_key
+                  ansible_user: stack
                   ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
           EOF
           chmod 600 /tmp/inventory.yml
@@ -272,11 +261,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Write SSH private key
-        run: |
-          echo "${{ secrets.EKSA_SSH_PRIVATE_KEY }}" > /tmp/eksa_ssh_key
-          chmod 600 /tmp/eksa_ssh_key
-
       - name: Write dynamic inventory
         run: |
           cat > /tmp/inventory.yml << EOF
@@ -291,8 +275,7 @@ jobs:
                   cp-node-3:
                     ansible_host: ${{ github.event.inputs.cp_node_3_ip }}
                 vars:
-                  ansible_user: ubuntu
-                  ansible_ssh_private_key_file: /tmp/eksa_ssh_key
+                  ansible_user: stack
                   ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
           EOF
           chmod 600 /tmp/inventory.yml
@@ -351,11 +334,6 @@ jobs:
         uses: actions/checkout@v4
 
 
-      - name: Write SSH private key
-        run: |
-          echo "${{ secrets.EKSA_SSH_PRIVATE_KEY }}" > /tmp/eksa_ssh_key
-          chmod 600 /tmp/eksa_ssh_key
-
       - name: Write dynamic inventory
         run: |
           cat > /tmp/inventory.yml << EOF
@@ -370,16 +348,11 @@ jobs:
                   cp-node-3:
                     ansible_host: ${{ github.event.inputs.cp_node_3_ip }}
                 vars:
-                  ansible_user: ubuntu
-                  ansible_ssh_private_key_file: /tmp/eksa_ssh_key
+                  ansible_user: stack
                   ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
           EOF
           chmod 600 /tmp/inventory.yml
 
-      - name: Write extra vars file
-        run: |
-          echo "encryption_key: ${{ secrets.ETCD_ENCRYPTION_KEY }}" > /tmp/extra_vars.yml
-          chmod 600 /tmp/extra_vars.yml
 
       - name: Re-encrypt all existing secrets
         working-directory: ansible
@@ -413,9 +386,9 @@ jobs:
         run: rm -f /tmp/eksa_ssh_key /tmp/extra_vars.yml /tmp/inventory.yml
 
 
-  # -------------------------------------------------------
-  # JOB 4 - Cilium network policy (runs after Azure Arc RBAC)
-  # -------------------------------------------------------
+  # -------------------------------
+  # JOB 4 - Cilium network policy 
+  # -------------------------------
   apply-cilium-policy:
     name: Apply Cilium Network Policy
     runs-on: self-hosted
@@ -431,7 +404,7 @@ jobs:
 
       - name: Write kubeconfig
         run: |
-          echo "${{ secrets.KUBECONFIG_CONTENT }}" | base64 -d > /tmp/kubeconfig
+          cat ~/.kube/{{ inputs.cluster_name }}.kubeconfig > /tmp/kubeconfig
           chmod 600 /tmp/kubeconfig
 
       - name: Run Cilium network policy playbook
@@ -439,9 +412,7 @@ jobs:
         env:
           ANSIBLE_ROLES_PATH: ./roles
         run: |
-          ansible-playbook playbooks/cilium-network-policy.yml \
-            --extra-vars "cluster_name=${{ github.event.inputs.cluster_name }}" \
-            -v
+          ansible-playbook playbooks/cilium-network-policy.yml -v
 
       - name: Cleanup sensitive files
         if: always()
