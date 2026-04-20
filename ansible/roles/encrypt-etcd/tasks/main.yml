@@ -22,10 +22,13 @@
   failed_when: false
   changed_when: false
 
-- name: Install PyYAML on control plane node
-  package:
+- name: Install ruamel.yaml on control plane node
+  pip:
     name: ruamel.yaml
     state: present
+    extra_args: "--break-system-packages"
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
 
 - name: Copy manifest patcher script
   copy:
