@@ -399,7 +399,9 @@ jobs:
         env:
           ANSIBLE_ROLES_PATH: ./roles
         run: |
-          ansible-playbook playbooks/cilium-network-policy.yml -v
+          ansible-playbook playbooks/cilium-network-policy.yml \
+          --extra-vars "cluster_name=${{ github.event.inputs.cluster_name }}" \
+          -v
 
       - name: Cleanup sensitive files
         if: always()
