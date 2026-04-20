@@ -142,7 +142,7 @@
     port: 6443
     delay: 15
     timeout: 120
-  when: patch_output.changed or enc_config_written.changed
+  when: patch_result.changed or enc_config_written.changed
 
 - name: Verify kube-apiserver is healthy
   uri:
