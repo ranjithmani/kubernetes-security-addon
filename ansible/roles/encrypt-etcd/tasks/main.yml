@@ -24,7 +24,7 @@
 
 - name: Install PyYAML on control plane node
   package:
-    name: python3-yaml
+    name: ruamel.yaml
     state: present
 
 - name: Copy manifest patcher script
