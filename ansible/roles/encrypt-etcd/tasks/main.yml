@@ -22,13 +22,13 @@
   failed_when: false
   changed_when: false
 
-- name: Install ruamel.yaml on control plane node
-  pip:
-    name: ruamel.yaml
+- name: Install python3-pip and ruamel.yaml via apt
+  package:
+    name:
+      - python3-pip
+      - python3-ruamel.yaml      
     state: present
-    extra_args: "--break-system-packages"
-  vars:
-    ansible_python_interpreter: /usr/bin/python3
+  when: flag_check.rc != 0
 
 - name: Copy manifest patcher script
   copy:
