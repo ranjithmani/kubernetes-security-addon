@@ -88,6 +88,6 @@
   register: health_check
   retries: 10
   delay: 6
-  until: result.status == 200
+  until: health_check.status == 200
   run_once: true
 
