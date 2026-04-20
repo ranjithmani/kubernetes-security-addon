@@ -391,7 +391,7 @@ jobs:
 
       - name: Write kubeconfig
         run: |
-          cat ~/.kube/{{ inputs.cluster_name }}.kubeconfig > /tmp/kubeconfig
+          cat ~/.kube/${{ github.event.inputs.cluster_name  }}.kubeconfig > /tmp/kubeconfig
           chmod 600 /tmp/kubeconfig
 
       - name: Run Cilium network policy playbook
