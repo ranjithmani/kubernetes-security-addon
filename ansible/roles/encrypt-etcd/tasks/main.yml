@@ -22,37 +22,81 @@
   failed_when: false
   changed_when: false
 
-- name: Patch manifest with Python string operations (no YAML parsing)
+
+- name: Patch manifest with correct indentation
   shell: |
     python3 << 'PYEOF'
-    import re
     with open('/etc/kubernetes/manifests/kube-apiserver.yaml', 'r') as f:
         lines = f.readlines()
+
+    # Detect indentation from existing volumeMount items
+    # Find the line "    - mountPath:" to get exact indent used
+    existing_mount_indent = ''
+    existing_vol_indent = ''
+    in_volumemounts = False
+    in_volumes = False
+
+    for line in lines:
+        if 'volumeMounts:' in line and not in_volumes:
+            in_volumemounts = True
+            continue
+        if in_volumemounts and '- mountPath:' in line:
+            existing_mount_indent = line[:line.index('-')]
+            in_volumemounts = False
+        if line.strip() == 'volumes:':
+            in_volumes = True
+            continue
+        if in_volumes and '- hostPath:' in line:
+            existing_vol_indent = line[:line.index('-')]
+            in_volumes = False
+
+    print(f"Detected mount indent: '{existing_mount_indent}' ({len(existing_mount_indent)} spaces)")
+    print(f"Detected vol indent  : '{existing_vol_indent}' ({len(existing_vol_indent)} spaces)")
+
+    # Build new lines using detected indentation
+    mi = existing_mount_indent          # e.g. '    ' (4 spaces)
+    mp = mi + '  '                      # property indent e.g. '      ' (6 spaces)
+    vi = existing_vol_indent            # e.g. '  ' (2 spaces)
+    vp = vi + '  '                      # hostPath property indent
+    vpp = vp + '  '                     # path/type indent
+
+    enc_flag     = '    - --encryption-provider-config=/etc/kubernetes/enc/encryption-config.yaml\n'
+    mount_lines  = [
+        f'{mi}- mountPath: /etc/kubernetes/enc\n',
+        f'{mp}name: enc-config\n',
+        f'{mp}readOnly: true\n',
+    ]
+    volume_lines = [
+        f'{vi}- hostPath:\n',
+        f'{vpp}path: /etc/kubernetes/enc\n',
+        f'{vpp}type: DirectoryOrCreate\n',
+        f'{vp}name: enc-config\n',
+    ]
+
     new_lines = []
+    already_has_flag   = any('encryption-provider-config' in l for l in lines)
+    already_has_mount  = any('enc-config' in l for l in lines)
+    already_has_volume = any('/etc/kubernetes/enc' in l for l in lines)
+
     for i, line in enumerate(lines):
         new_lines.append(line)
-        # 1. Add encryption flag after tls-private-key-file
-        if '--tls-private-key-file' in line and '--encryption-provider-config' not in lines[i+1]:
-            indent = len(line) - len(line.lstrip())
-            new_lines.append(' ' * indent + '- --encryption-provider-config=/etc/kubernetes/enc/encryption-config.yaml\n')
-        # 2. Add volumeMount after volumeMounts: line
-        if line.strip() == 'volumeMounts:' and i+1 < len(lines) and 'enc-config' not in ''.join(lines[i:i+5]):
-            indent = len(line) - len(line.lstrip())
-            new_lines.append(' ' * (indent + 2) + '- mountPath: /etc/kubernetes/enc\n')
-            new_lines.append(' ' * (indent + 4) + 'name: enc-config\n')
-            new_lines.append(' ' * (indent + 4) + 'readOnly: true\n')
-        # 3. Add volume after volumes: line
-        if line.strip() == 'volumes:' and i+1 < len(lines) and '/etc/kubernetes/enc' not in ''.join(lines[i:i+5]):
-            indent = len(line) - len(line.lstrip())
-            new_lines.append(' ' * (indent + 2) + '- hostPath:\n')
-            new_lines.append(' ' * (indent + 6) + 'path: /etc/kubernetes/enc\n')
-            new_lines.append(' ' * (indent + 6) + 'type: DirectoryOrCreate\n')
-            new_lines.append(' ' * (indent + 4) + 'name: enc-config\n')
+
+        # Insert flag after tls-private-key-file
+        if not already_has_flag and '--tls-private-key-file' in line:
+            new_lines.append(enc_flag)
+
+        # Insert volumeMount after volumeMounts:
+        if not already_has_mount and 'volumeMounts:' in line:
+            new_lines.extend(mount_lines)
+
+        # Insert volume after volumes:
+        if not already_has_volume and line.strip() == 'volumes:':
+            new_lines.extend(volume_lines)
 
     with open('/etc/kubernetes/manifests/kube-apiserver.yaml', 'w') as f:
         f.writelines(new_lines)
 
-    print("Patched successfully")
+    print("Done")
     PYEOF
   register: patch_result
   when: flag_check.rc != 0
