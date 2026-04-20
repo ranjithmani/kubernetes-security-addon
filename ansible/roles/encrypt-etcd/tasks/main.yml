@@ -81,10 +81,13 @@
   when: patch_output.changed or enc_config_written.changed
 
 - name: Verify kube-apiserver is healthy
-  command: kubectl get --raw /healthz
+  uri:
+    url: "https://{{ ansible_host }}:6443/healthz"
+    validate_certs: false
+    status_code: 200
   register: health_check
-  retries: 5
-  delay: 10
-  until: health_check.stdout == "ok"
-  delegate_to: "{{ groups['control_plane_nodes'][0] }}"
+  retries: 10
+  delay: 6
+  until: result.status == 200
   run_once: true
+
