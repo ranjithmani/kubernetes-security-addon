@@ -22,29 +22,32 @@
   failed_when: false
   changed_when: false
 
-- name: Install python3-pip and ruamel.yaml via apt
-  package:
-    name:
-      - python3-pip
-      - python3-ruamel.yaml      
-    state: present
+- name: Patch manifest with sed
+  shell: |
+    MANIFEST="{{ apiserver_manifest }}"
+
+    # 1. Add flag
+    sed -i '/--tls-private-key-file/a\    - --encryption-provider-config={{ enc_config_path }}' \
+      "$MANIFEST"
+
+    # 2. Add volumeMount
+    sed -i '/    volumeMounts:/a\        - mountPath: \/etc\/kubernetes\/enc\n          name: enc-config\n          readOnly: true' \
+      "$MANIFEST"
+
+    # 3. Add volume
+    sed -i '/^  volumes:/a\    - hostPath:\n        path: \/etc\/kubernetes\/enc\n        type: DirectoryOrCreate\n      name: enc-config' \
+      "$MANIFEST"
+
+    echo "Patched successfully"
+    grep -n "encryption\|enc-config" "$MANIFEST"
+  register: patch_result
   when: flag_check.rc != 0
 
-- name: Copy manifest patcher script
-  copy:
-    src: patch_apiserver.py
-    dest: /tmp/patch_apiserver.py
-    mode: '0700'
-
-- name: Patch kube-apiserver manifest (YAML-safe)
-  command: python3 /tmp/patch_apiserver.py {{ enc_config_path }}
-  register: patch_output
-  when: flag_check.rc != 0
-
-- name: Show patch output
+- name: Show patch result
   debug:
-    var: patch_output.stdout_lines
+    var: patch_result.stdout_lines
   when: flag_check.rc != 0
+
 
 - name: Validate patched manifest is valid YAML
   shell: |
