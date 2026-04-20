@@ -4,7 +4,7 @@
 - name: Display policy configuration
   ansible.builtin.debug:
     msg: |
-      Cluster: {{ cluster_name }}
+      #Cluster: {{ cluster_name }}
       Policy: {{ policy_name }}
       Exempt namespaces: {{ exempt_namespaces | join(', ') }}
 
