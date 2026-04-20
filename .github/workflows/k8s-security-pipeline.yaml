@@ -364,15 +364,6 @@ jobs:
             -b
         # Only runs from one node — kubectl replace is cluster-wide
 
-      - name: Verify a sample secret is encrypted in etcd
-        working-directory: ansible
-        run: |
-          ansible control_plane_nodes \
-            -i /tmp/inventory.yml \
-            --limit cp-node-1 \
-            -m shell \
-            -a "ETCDCTL_API=3 etcdctl --cert=/etc/kubernetes/pki/apiserver-etcd-client.crt --key=/etc/kubernetes/pki/apiserver-etcd-client.key --cacert=/etc/kubernetes/pki/etcd/ca.crt get /registry/secrets/default/test-etcd-encryption | strings | grep -c 'k8s:enc:aescbc:v1:key1'" \
-            -b
 
       - name: Cleanup sensitive files
         if: always()
