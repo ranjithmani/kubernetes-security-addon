@@ -43,6 +43,11 @@ on:
         description: "Cluster name ( Cilium roles)"
         required: true
         type: string
+      apply_cilium:
+        description: "Apply Cilium network policy"
+        required: true
+        default: false
+        type: boolean
 
 env:
   ANSIBLE_FORCE_COLOR: "1"
@@ -377,8 +382,8 @@ jobs:
     needs: [reencrypt-secrets]
     if: |
       always() &&
-      needs.reencrypt-secrets.result == 'success'
-
+      github.event.inputs.apply_cilium == 'true'
+     
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -425,4 +430,4 @@ jobs:
           echo "| cp-node-1 (etcd encrypt)  | ${{ needs.encrypt-cp-node-1.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| cp-node-2 (etcd encrypt)  | ${{ needs.encrypt-cp-node-2.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| cp-node-3 (etcd encrypt)  | ${{ needs.encrypt-cp-node-3.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Cilium Network Policy     | ${{ needs.apply-cilium-policy.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Apply Cilium | ${{ github.event.inputs.apply_cilium }} |" >> $GITHUB_STEP_SUMMARY
