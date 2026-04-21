@@ -128,7 +128,7 @@ jobs:
                   cp-node-3:
                     ansible_host: ${{ github.event.inputs.cp_node_3_ip }}
                 vars:
-                  ansible_user: ubuntu
+                  ansible_user: ${{ secrets.ANSIBLE_USER }}
                   ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
           EOF
           chmod 600 /tmp/inventory.yml
@@ -207,7 +207,7 @@ jobs:
                   cp-node-3:
                     ansible_host: ${{ github.event.inputs.cp_node_3_ip }}
                 vars:
-                  ansible_user: ubuntu
+                  ansible_user: ${{ secrets.ANSIBLE_USER }}
                   ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
           EOF
           chmod 600 /tmp/inventory.yml
@@ -274,7 +274,7 @@ jobs:
                   cp-node-3:
                     ansible_host: ${{ github.event.inputs.cp_node_3_ip }}
                 vars:
-                  ansible_user: ubuntu
+                  ansible_user: ${{ secrets.ANSIBLE_USER }}
                   ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
           EOF
           chmod 600 /tmp/inventory.yml
@@ -346,7 +346,7 @@ jobs:
                   cp-node-3:
                     ansible_host: ${{ github.event.inputs.cp_node_3_ip }}
                 vars:
-                  ansible_user: ubuntu
+                  ansible_user: ${{ secrets.ANSIBLE_USER }}
                   ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
           EOF
           chmod 600 /tmp/inventory.yml
