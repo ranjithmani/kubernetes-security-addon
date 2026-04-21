@@ -235,7 +235,6 @@ jobs:
         run: |
           ansible control_plane_nodes \
             -i /tmp/inventory.yml \
-            --kubeconfig=/etc/kubernetes/admin.conf \
             --limit cp-node-2 \
             -m uri \
             -a "url=https://${{ github.event.inputs.cp_node_1_ip }}:6443/healthz validate_certs=false status_code=200" \
@@ -302,7 +301,6 @@ jobs:
         run: |
           ansible control_plane_nodes \
             -i /tmp/inventory.yml \
-            --kubeconfig=/etc/kubernetes/admin.conf \
             --limit cp-node-3 \
             -m uri \
             -a "url=https://${{ github.event.inputs.cp_node_1_ip }}:6443/healthz validate_certs=false status_code=200" \
