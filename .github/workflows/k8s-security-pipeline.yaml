@@ -128,7 +128,7 @@ jobs:
                   cp-node-3:
                     ansible_host: ${{ github.event.inputs.cp_node_3_ip }}
                 vars:
-                  ansible_user: stack
+                  ansible_user: ubuntu
                   ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
           EOF
           chmod 600 /tmp/inventory.yml
@@ -207,7 +207,7 @@ jobs:
                   cp-node-3:
                     ansible_host: ${{ github.event.inputs.cp_node_3_ip }}
                 vars:
-                  ansible_user: stack
+                  ansible_user: ubuntu
                   ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
           EOF
           chmod 600 /tmp/inventory.yml
@@ -238,9 +238,7 @@ jobs:
             --kubeconfig=/etc/kubernetes/admin.conf \
             --limit cp-node-2 \
             -m uri \
-            -a "url=https://${{ github.event.inputs.cp_node_2_ip }}:6443/healthz \
-                validate_certs=no \
-                status_code=200" \
+            -a "url=https://${{ github.event.inputs.cp_node_1_ip }}:6443/healthz validate_certs=false status_code=200" \
             -b
 
       - name: Cleanup sensitive files
@@ -276,7 +274,7 @@ jobs:
                   cp-node-3:
                     ansible_host: ${{ github.event.inputs.cp_node_3_ip }}
                 vars:
-                  ansible_user: stack
+                  ansible_user: ubuntu
                   ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
           EOF
           chmod 600 /tmp/inventory.yml
@@ -307,9 +305,7 @@ jobs:
             --kubeconfig=/etc/kubernetes/admin.conf \
             --limit cp-node-3 \
             -m uri \
-            -a "url=https://${{ github.event.inputs.cp_node_3_ip }}:6443/healthz \
-                validate_certs=no \
-                status_code=200" \
+            -a "url=https://${{ github.event.inputs.cp_node_1_ip }}:6443/healthz validate_certs=false status_code=200" \
             -b
 
       - name: Cleanup sensitive files
@@ -350,7 +346,7 @@ jobs:
                   cp-node-3:
                     ansible_host: ${{ github.event.inputs.cp_node_3_ip }}
                 vars:
-                  ansible_user: stack
+                  ansible_user: ubuntu
                   ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
           EOF
           chmod 600 /tmp/inventory.yml
