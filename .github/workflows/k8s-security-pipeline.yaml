@@ -162,7 +162,7 @@ jobs:
           ANSIBLE_ROLES_PATH: ./roles
         run: |
           ansible-playbook playbooks/etcd-encryption.yml \
-            -i /tmp/workload-inv \
+            -i /tmp/workload-inv control_plane_nodes \
             --extra-vars "@/tmp/extra_vars.yml" \
             -v 
      
