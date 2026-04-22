@@ -1,6 +1,7 @@
 ---
 - name: Enable etcd encryption for Kubernetes Secrets
   hosts: control_plane_nodes
+  serial: 1
   become: true
   vars:
     enc_config_dir: /etc/kubernetes/enc

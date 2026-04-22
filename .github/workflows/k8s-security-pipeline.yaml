@@ -162,7 +162,6 @@ jobs:
           ansible-playbook playbooks/etcd-encryption.yml \
             -i /tmp/workload-inv \
             --extra-vars "@/tmp/extra_vars.yml" \
-            --serial=1 \
             -v 
      
       - name: Re-encrypt all the secrets
