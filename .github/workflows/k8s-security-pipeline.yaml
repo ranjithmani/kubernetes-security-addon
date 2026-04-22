@@ -141,9 +141,9 @@ jobs:
       - name: Get the workload cluster inventory
         run: |
           export KUBECONFIG=~/.kube/${{ github.event.inputs.cluster_name }}-w1.kubeconfig
-          echo "[controlplane]" > /tmp/workload-inv
+          echo "[control_plane_nodes]" > /tmp/workload-inv
           kubectl get no -o wide | awk '/control-plane/ {print $6}' >> /tmp/workload-inv
-          echo "[vars]" >> /tmp/workload-inv
+          echo "[control_plane_nodes:vars]" >> /tmp/workload-inv
           echo "ansible_user: ${{ secrets.ANSIBLE_USER }}" >> /tmp/workload-inv
           echo 'ansible_ssh_common_args: "-o StrictHostKeyChecking=no"'  >> /tmp/workload-inv
 
