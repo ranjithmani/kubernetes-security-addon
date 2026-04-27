@@ -104,14 +104,18 @@
     'failed' in kyverno_version_check.stdout or
     'pending' in kyverno_version_check.stdout
 
-- name: Show Kyverno install result
-  ansible.builtin.debug:
-    msg: "{{ kyverno_install.stdout_lines | default(['Kyverno install skipped - expected version already deployed']) }}"
 
-- name: Display Kyverno installation result
+- name: Display Kyverno install output
   ansible.builtin.debug:
     msg: "{{ kyverno_install.stdout_lines }}"
-  when: kyverno_install is defined
+  when:
+    - kyverno_install is not skipped
+    - kyverno_install.stdout_lines is defined
+
+- name: Display Kyverno skip message
+  ansible.builtin.debug:
+    msg: "Kyverno skipped - expected version {{ kyverno_chart_version }} already deployed"
+  when: kyverno_install is skipped
 
 - name: Wait for Kyverno admission controller pods to be ready
   ansible.builtin.command: >
