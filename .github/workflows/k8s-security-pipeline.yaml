@@ -201,6 +201,7 @@ jobs:
         env:
           ANSIBLE_ROLES_PATH: ./roles
         run: |
+          cp ~/.kube/${{ github.event.inputs.cluster_name }}-w1.kubeconfig /tmp/kubeconfig
           ansible-playbook playbooks/kyverno.yml
 
 

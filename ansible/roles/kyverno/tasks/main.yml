@@ -38,12 +38,15 @@
   changed_when: false
 
 - name: Create Kyverno namespace
-  ansible.builtin.command: kubectl create namespace {{ kyverno_namespace }}
+  ansible.builtin.command:
+    cmd: kubectl create namespace {{ kyverno_namespace }}
   environment:
     KUBECONFIG: "{{ kubeconfig_path }}"
-  register: ns_create
-  changed_when: ns_create.rc == 0
-  failed_when: ns_create.rc != 0 and 'already exists' not in ns_create.stderr
+  register: ns_result
+  failed_when:
+    - ns_result.rc != 0
+    - "'already exists' not in ns_result.stderr"
+  changed_when: ns_result.rc == 0
 
 - name: Check if Kyverno is already installed
   ansible.builtin.command: >
