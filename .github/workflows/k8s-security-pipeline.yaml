@@ -21,6 +21,11 @@ on:
         required: true
         default: false
         type: boolean
+      apply_encyrption:
+        description: "Apply ETCD Encryption"
+        required: true
+        default: false
+        type: boolean
       apply_Azure_rbac:
         description: "Apply Azure RBAC"
         required: true
@@ -83,6 +88,7 @@ jobs:
           echo "🎯 mgmt_cluster     : ${{ github.event.inputs.mgmt_cluster }}"
           echo "🎯 worklaod_cluster : ${{ github.event.inputs.workload_cluster }}"
           echo "🔍 Cilium           : ${{ github.event.inputs.apply_cilium }}"
+          echo "🔍 Encryption       : ${{ github.event.inputs.apply_encryption }}"
           echo "🔍 Azure RBAC       : ${{ github.event.inputs.apply_Azure_rbac }}"
           echo "🔍 Deploy Kyverno   : ${{ github.event.inputs.deploy_kyverno }}"
           echo "📡 Runner Name      : ${{ github.event.inputs.runner_name }}"
@@ -160,6 +166,7 @@ jobs:
 
 
       - name: Run playbook on all the CP nodes
+        if: github.event.inputs.apply_encryption == 'true'
         id: apply_encryption
         working-directory: ansible
         env:
@@ -178,6 +185,7 @@ jobs:
           kubectl get secrets --all-namespaces -o json  | kubectl replace -f -
 
       - name: Run Cilium network policy playbook
+        if: github.event.inputs.apply_cilium == 'true'
         working-directory: ansible
         env:
           ANSIBLE_ROLES_PATH: ./roles
@@ -188,6 +196,7 @@ jobs:
           -v
 
       - name: Deploy kyverno
+        if: github.event.inputs.deploy_kyverno == 'true'
         working-directory: ansible
         env:
           ANSIBLE_ROLES_PATH: ./roles
