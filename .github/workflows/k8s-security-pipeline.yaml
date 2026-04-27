@@ -21,12 +21,12 @@ on:
         required: true
         default: false
         type: boolean
-      apply_encyrption:
+      apply_encryption:
         description: "Apply ETCD Encryption"
         required: true
         default: false
         type: boolean
-      apply_Azure_rbac:
+      apply_azure_rbac:
         description: "Apply Azure RBAC"
         required: true
         default: false
@@ -89,7 +89,7 @@ jobs:
           echo "🎯 worklaod_cluster : ${{ github.event.inputs.workload_cluster }}"
           echo "🔍 Cilium           : ${{ github.event.inputs.apply_cilium }}"
           echo "🔍 Encryption       : ${{ github.event.inputs.apply_encryption }}"
-          echo "🔍 Azure RBAC       : ${{ github.event.inputs.apply_Azure_rbac }}"
+          echo "🔍 Azure RBAC       : ${{ github.event.inputs.apply_azure_rbac }}"
           echo "🔍 Deploy Kyverno   : ${{ github.event.inputs.deploy_kyverno }}"
           echo "📡 Runner Name      : ${{ github.event.inputs.runner_name }}"
           echo "🔖 Cluster name     : ${{ github.event.inputs.cluster_name }}"
@@ -170,7 +170,7 @@ jobs:
           chmod 600 /tmp/extra_vars.yml
 
       - name: Run Azure RBAC
-        if: github.event.inputs.apply_Azure_rbac == 'true'
+        if: github.event.inputs.apply_azure_rbac == 'true'
         run: |
           cp ~/.kube/${{ github.event.inputs.cluster_name }}-w1.kubeconfig /tmp/kubeconfig
           ansible-playbook -i /tmp/workload-inv playbooks/azure-arc-rbac.yml -e cluster_name=${{ github.event.inputs.cluster_name }} -e kubeconfig_path=/tmp/kubeconfig
