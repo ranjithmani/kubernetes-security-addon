@@ -126,8 +126,13 @@ jobs:
 
       - name: Run Azure RBAC
         run: |
-          echo "Reserved"
+          cp ~/.kube/${{ github.event.inputs.cluster_name }}-m.kubeconfig /tmp/kubeconfig
+          ansible-playbook -i /tmp/mgmt-inv playbooks/azure-arc-rbac.yml -e cluster_name=${{ github.event.inputs.cluster_name }} -e kubeconfig_path=/tmp/kubeconfig
 
+      - name: Cleanup sensitive files
+        if: always()
+        run: |
+          rm -f  /tmp/mgmt-inv /tmp/kubeconfig
 
 
   # -------------------------------------------------------
@@ -164,6 +169,11 @@ jobs:
           echo "encryption_key: ${{ secrets.ETCD_ENCRYPTION_KEY }}" > /tmp/extra_vars.yml
           chmod 600 /tmp/extra_vars.yml
 
+      - name: Run Azure RBAC
+        if: github.event.inputs.apply_Azure_rbac == 'true'
+        run: |
+          cp ~/.kube/${{ github.event.inputs.cluster_name }}-w1.kubeconfig /tmp/kubeconfig
+          ansible-playbook -i /tmp/workload-inv playbooks/azure-arc-rbac.yml -e cluster_name=${{ github.event.inputs.cluster_name }} -e kubeconfig_path=/tmp/kubeconfig
 
       - name: Run playbook on all the CP nodes
         if: github.event.inputs.apply_encryption == 'true'
