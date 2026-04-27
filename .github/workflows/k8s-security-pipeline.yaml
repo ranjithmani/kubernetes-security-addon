@@ -1,7 +1,6 @@
-name: Security pipeline
-
+name: K8S Security Hardening
 on:
-  workflow_dispatch:                  
+  workflow_dispatch:
     inputs:
       cluster_name:
         description: "Cluster name"
@@ -24,6 +23,11 @@ on:
         type: boolean
       apply_Azure_rbac:
         description: "Apply Azure RBAC"
+        required: true
+        default: false
+        type: boolean
+      deploy_kyverno:
+        description: "Deploy Kyverno"
         required: true
         default: false
         type: boolean
@@ -80,6 +84,7 @@ jobs:
           echo "🎯 worklaod_cluster  : ${{ github.event.inputs.workload_cluster }}"
           echo "🔍 Cilium        : ${{ github.event.inputs.apply_cilium }}"
           echo "🔍 Azure RBAC    : ${{ github.event.inputs.apply_Azure_rbac }}"
+          echo "🔍 Deploy RBAC   : ${{ github.event.inputs.deploy_kyverno }}"
           echo "📡 Runner Name   : ${{ github.event.inputs.runner_name }}"
           echo "🔖 Cluster name  : ${{ github.event.inputs.cluster_name }}"
           echo "👤 Triggered by  : ${{ github.actor }}"
@@ -107,20 +112,20 @@ jobs:
       - name: Get the mgmt cluster inventory
         run: |
           export KUBECONFIG=~/.kube/${{ github.event.inputs.cluster_name }}-m.kubeconfig
-          echo "[controlplane]" > /tmp/mgmt-inv
+          echo "[control_plane_nodes]" > /tmp/mgmt-inv
           kubectl get no -o wide | awk '/control-plane/ {print $6}' >> /tmp/mgmt-inv
-          echo "[vars]" >>tmp/mgmt-inv
-          echo "ansible_user: ${{ secrets.ANSIBLE_USER }}" >> /tmp/mgmt-inv
-          echo 'ansible_ssh_common_args: "-o StrictHostKeyChecking=no"'  >> /tmp/mgmt-inv
+          echo "[control_plane_nodes:vars]" >>tmp/mgmt-inv
+          echo "ansible_user=${{ secrets.ANSIBLE_USER }}" >> /tmp/mgmt-inv
+          echo 'ansible_ssh_common_args="-o StrictHostKeyChecking=no"'  >> /tmp/mgmt-inv
 
-      - name: Run Azure RBAC 
+      - name: Run Azure RBAC
         run: |
           echo "Reserved"
 
 
 
   # -------------------------------------------------------
-  # JOB 3 - Run Hardening on workload cluster 
+  # JOB 3 - Run Hardening on workload cluster
   # -------------------------------------------------------
   workload-cluster:
     name: "Run hardening on workload cluster"
@@ -163,10 +168,10 @@ jobs:
           ansible-playbook playbooks/etcd-encryption.yml \
             -i /tmp/workload-inv \
             --extra-vars "@/tmp/extra_vars.yml" \
-            -v 
-     
+            -v
+
       - name: Re-encrypt all the secrets
-        if: steps.apply_encryption.outcome == 'success' 
+        if: steps.apply_encryption.outcome == 'success'
         run: |
           export KUBECONFIG=~/.kube/${{ github.event.inputs.cluster_name }}-w1.kubeconfig
           kubectl get nodes
@@ -182,8 +187,15 @@ jobs:
           --extra-vars "cluster_name=${{ github.event.inputs.cluster_name }}" \
           -v
 
+      - name: Deploy kyverno
+        working-directory: ansible
+         env:
+           ANSIBLE_ROLES_PATH: ./roles
+         run: |
+           ansible-playbook playbooks/kyverno.yml
+
+
       - name: Cleanup sensitive files
         if: always()
         run: |
           rm -f /tmp/eksa_ssh_key /tmp/extra_vars.yml /tmp/workload-inv /tmp/kubeconfig
-
