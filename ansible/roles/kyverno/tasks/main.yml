@@ -61,21 +61,17 @@
     dest: /tmp/kyverno-values.yaml
     mode: '0600'
 
+- name: Copy version check script
+  ansible.builtin.copy:
+    src: check_kyverno_version.py
+    dest: /tmp/check_kyverno_version.py
+    mode: '0755'
+
 - name: Check if Kyverno is already installed with expected version
   ansible.builtin.shell: |
     helm list -n {{ kyverno_namespace }} \
       --filter "^{{ kyverno_release_name }}$" \
-      --output json 2>/dev/null | \
-    python3 -c "
-import sys, json
-releases = json.load(sys.stdin)
-if not releases:
-    print('NOT_INSTALLED')
-else:
-    chart = releases[0].get('chart', '')
-    status = releases[0].get('status', '')
-    print(f'CHART={chart} STATUS={status}')
-"
+      --output json 2>/dev/null | python3 /tmp/check_kyverno_version.py
   environment:
     KUBECONFIG: "{{ kubeconfig_path }}"
   register: kyverno_version_check
