@@ -68,7 +68,7 @@ kyverno_reports_controller_enabled: true
 kubeconfig_path: "{{ ansible_env.HOME }}/.kube/config"
 
 # Helm timeout
-kyverno_helm_timeout: 600s
+kyverno_helm_timeout: 900s
 
 # Wait for deployment to be ready
 kyverno_wait_for_ready: true

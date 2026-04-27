@@ -61,6 +61,31 @@
     dest: /tmp/kyverno-values.yaml
     mode: '0600'
 
+- name: Check if Kyverno is already installed with expected version
+  ansible.builtin.shell: |
+    helm list -n {{ kyverno_namespace }} \
+      --filter "^{{ kyverno_release_name }}$" \
+      --output json 2>/dev/null | \
+    python3 -c "
+import sys, json
+releases = json.load(sys.stdin)
+if not releases:
+    print('NOT_INSTALLED')
+else:
+    chart = releases[0].get('chart', '')
+    status = releases[0].get('status', '')
+    print(f'CHART={chart} STATUS={status}')
+"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: kyverno_version_check
+  changed_when: false
+  failed_when: false
+
+- name: Show current Kyverno status
+  ansible.builtin.debug:
+    msg: "{{ kyverno_version_check.stdout }}"
+
 - name: Install Kyverno via Helm
   ansible.builtin.command: >
     helm upgrade --install {{ kyverno_release_name }} {{ kyverno_chart_name }}
@@ -69,11 +94,23 @@
     --version {{ kyverno_chart_version }}
     --values /tmp/kyverno-values.yaml
     --timeout {{ kyverno_helm_timeout }}
+    --atomic
     {% if kyverno_wait_for_ready %}--wait{% endif %}
   environment:
     KUBECONFIG: "{{ kubeconfig_path }}"
   register: kyverno_install
-  changed_when: "'has been upgraded' in kyverno_install.stdout or 'has been installed' in kyverno_install.stdout"
+  changed_when: >
+    'has been upgraded' in kyverno_install.stdout or
+    'has been installed' in kyverno_install.stdout
+  when: >
+    'NOT_INSTALLED' in kyverno_version_check.stdout or
+    kyverno_chart_name ~ '-' ~ kyverno_chart_version not in kyverno_version_check.stdout or
+    'failed' in kyverno_version_check.stdout or
+    'pending' in kyverno_version_check.stdout
+
+- name: Show Kyverno install result
+  ansible.builtin.debug:
+    msg: "{{ kyverno_install.stdout_lines | default(['Kyverno install skipped - expected version already deployed']) }}"
 
 - name: Display Kyverno installation result
   ansible.builtin.debug:
