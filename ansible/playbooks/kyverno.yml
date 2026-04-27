@@ -6,6 +6,7 @@
   hosts: localhost
   connection: local
   gather_facts: true
-
+  vars:
+    kubeconfig_path: /tmp/kubeconfig
   roles:
     - role: kyverno
