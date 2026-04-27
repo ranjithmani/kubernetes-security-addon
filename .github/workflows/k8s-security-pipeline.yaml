@@ -157,7 +157,7 @@ jobs:
           echo "[control_plane_nodes:vars]" >> /tmp/workload-inv
           echo "ansible_user=${{ secrets.ANSIBLE_USER }}" >> /tmp/workload-inv
           echo 'ansible_ssh_common_args="-o StrictHostKeyChecking=no"'  >> /tmp/workload-inv
-          cat /tmp/workload-inv
+        
 
       - name: Write extra vars file
         run: |
