@@ -1,0 +1,30 @@
+---
+# Playbook to deploy Kyverno validation policies only
+# Usage: ansible-playbook playbooks/kyverno-policies.yml
+
+- name: Deploy Kyverno Policies
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  vars:
+    kyverno_namespace: kyverno
+    kubeconfig_path: "{{ ansible_env.HOME }}/.kube/config"
+    kyverno_privileged_namespaces:
+      - kube-system
+      - kube-public
+      - kube-node-lease
+      - rook-ceph
+      - azure-arc
+      - kubevirt
+      - kyverno
+    kyverno_blocked_cluster_roles:
+      - cluster-admin
+      - admin
+      - edit
+
+  tasks:
+    - name: Include policy deployment tasks
+      ansible.builtin.include_role:
+        name: kyverno
+        tasks_from: deploy-policies.yml

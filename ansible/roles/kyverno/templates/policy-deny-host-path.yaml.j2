@@ -1,0 +1,58 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: deny-host-path-volumes
+  annotations:
+    policies.kyverno.io/title: Deny Host Path Volumes
+    policies.kyverno.io/category: Pod Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod, Volume
+    policies.kyverno.io/description: >-
+      HostPath volumes allow containers to access the host filesystem, which
+      can be used to escape containers or access sensitive host data. This
+      policy denies pods that mount hostPath volumes except in privileged
+      system namespaces where such access is required.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: deny-host-path-volumes
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+{% for ns in kyverno_privileged_namespaces %}
+                - {{ ns }}
+{% endfor %}
+      validate:
+        message: "HostPath volumes are not allowed. Mounting host directories is restricted to privileged system namespaces only."
+        pattern:
+          spec:
+            =(volumes):
+              - X(hostPath): "null"
+
+    - name: deny-host-path-in-ephemeral-containers
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+{% for ns in kyverno_privileged_namespaces %}
+                - {{ ns }}
+{% endfor %}
+      validate:
+        message: "HostPath volumes in ephemeral containers are not allowed."
+        pattern:
+          spec:
+            =(ephemeralContainers):
+              - =(volumeMounts):
+                  - =(mountPath): "!=/host*"

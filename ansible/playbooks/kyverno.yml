@@ -1,0 +1,11 @@
+---
+# Playbook to deploy Kyverno policy engine in HA mode
+# Usage: ansible-playbook playbooks/kyverno.yml
+
+- name: Deploy Kyverno via Helm
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  roles:
+    - role: kyverno

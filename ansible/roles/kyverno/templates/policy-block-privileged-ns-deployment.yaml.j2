@@ -1,0 +1,52 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: block-deployment-to-privileged-namespaces
+  annotations:
+    policies.kyverno.io/title: Block Deployment to Privileged Namespaces
+    policies.kyverno.io/category: Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Prevents users from deploying workloads to privileged system namespaces.
+      Only system components should run in these namespaces.
+spec:
+  validationFailureAction: Enforce
+  background: false
+  rules:
+    - name: block-privileged-namespace-deployments
+      match:
+        any:
+          - resources:
+              kinds:
+                - Deployment
+                - StatefulSet
+                - DaemonSet
+                - ReplicaSet
+                - Pod
+                - Job
+                - CronJob
+              namespaces:
+{% for ns in kyverno_privileged_namespaces %}
+                - {{ ns }}
+{% endfor %}
+      exclude:
+        any:
+          - clusterRoles:
+              - cluster-admin
+              - system:masters
+          - subjects:
+              - kind: ServiceAccount
+                namespace: kube-system
+                name: "*"
+              - kind: ServiceAccount
+                namespace: azure-arc
+                name: "*"
+              - kind: ServiceAccount
+                namespace: rook-ceph
+                name: "*"
+              - kind: ServiceAccount
+                namespace: kubevirt
+                name: "*"
+      validate:
+        message: "Deployment to privileged namespace '{{ '{{' }}request.namespace{{ '}}' }}' is not allowed. Only system components can run in privileged namespaces."
+        deny: {}

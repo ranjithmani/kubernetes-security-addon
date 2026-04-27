@@ -1,0 +1,96 @@
+---
+# Deploy Kyverno validation policies
+
+- name: Verify Kyverno is ready before deploying policies
+  ansible.builtin.command: >
+    kubectl get deployment kyverno-admission-controller
+    -n {{ kyverno_namespace }}
+    -o jsonpath='{.status.readyReplicas}'
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: kyverno_ready
+  until: kyverno_ready.stdout | int >= 1
+  retries: 30
+  delay: 10
+  changed_when: false
+
+- name: Create temporary directory for policies
+  ansible.builtin.tempfile:
+    state: directory
+    prefix: kyverno-policies-
+  register: policy_temp_dir
+
+- name: Generate policy - Block Deployment to Privileged Namespaces
+  ansible.builtin.template:
+    src: policy-block-privileged-ns-deployment.yaml.j2
+    dest: "{{ policy_temp_dir.path }}/policy-block-privileged-ns-deployment.yaml"
+    mode: '0600'
+
+- name: Generate policy - Block Cluster Admin RoleBindings
+  ansible.builtin.template:
+    src: policy-block-cluster-admin-rolebinding.yaml.j2
+    dest: "{{ policy_temp_dir.path }}/policy-block-cluster-admin-rolebinding.yaml"
+    mode: '0600'
+
+- name: Generate policy - Deny Host Path Volumes
+  ansible.builtin.template:
+    src: policy-deny-host-path.yaml.j2
+    dest: "{{ policy_temp_dir.path }}/policy-deny-host-path.yaml"
+    mode: '0600'
+
+- name: Apply policy - Block Deployment to Privileged Namespaces
+  ansible.builtin.command: >
+    kubectl apply -f {{ policy_temp_dir.path }}/policy-block-privileged-ns-deployment.yaml
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: policy_privileged_ns
+  changed_when: "'created' in policy_privileged_ns.stdout or 'configured' in policy_privileged_ns.stdout"
+
+- name: Apply policy - Block Cluster Admin RoleBindings
+  ansible.builtin.command: >
+    kubectl apply -f {{ policy_temp_dir.path }}/policy-block-cluster-admin-rolebinding.yaml
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: policy_rolebinding
+  changed_when: "'created' in policy_rolebinding.stdout or 'configured' in policy_rolebinding.stdout"
+
+- name: Apply policy - Deny Host Path Volumes
+  ansible.builtin.command: >
+    kubectl apply -f {{ policy_temp_dir.path }}/policy-deny-host-path.yaml
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: policy_hostpath
+  changed_when: "'created' in policy_hostpath.stdout or 'configured' in policy_hostpath.stdout"
+
+- name: Wait for policies to be ready
+  ansible.builtin.command: >
+    kubectl get clusterpolicy {{ item }} -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: policy_status
+  until: policy_status.stdout | lower == "true"
+  retries: 12
+  delay: 5
+  changed_when: false
+  loop:
+    - block-deployment-to-privileged-namespaces
+    - block-cluster-admin-rolebindings
+    - deny-host-path-volumes
+
+- name: Display deployed Kyverno policies
+  ansible.builtin.command: >
+    kubectl get clusterpolicy
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: all_policies
+  changed_when: false
+
+- name: Show policy status
+  ansible.builtin.debug:
+    msg: "{{ all_policies.stdout_lines }}"
+
+- name: Cleanup temporary policy directory
+  ansible.builtin.file:
+    path: "{{ policy_temp_dir.path }}"
+    state: absent
+  changed_when: false

@@ -1,0 +1,92 @@
+---
+# Kyverno Helm deployment defaults
+
+# Helm release configuration
+kyverno_namespace: kyverno
+kyverno_release_name: kyverno
+kyverno_chart_repo: https://kyverno.github.io/kyverno/
+kyverno_chart_name: kyverno
+kyverno_chart_version: "3.3.4"
+
+# HA Configuration - replica counts
+kyverno_admission_replicas: 3
+kyverno_background_replicas: 2
+kyverno_cleanup_replicas: 2
+kyverno_reports_replicas: 2
+
+# Resource configuration for admission controller (main component)
+kyverno_admission_resources:
+  limits:
+    memory: 384Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Resource configuration for background controller
+kyverno_background_resources:
+  limits:
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 64Mi
+
+# Resource configuration for cleanup controller
+kyverno_cleanup_resources:
+  limits:
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 64Mi
+
+# Resource configuration for reports controller
+kyverno_reports_resources:
+  limits:
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 64Mi
+
+# Pod disruption budget configuration
+kyverno_admission_pdb_min_available: 1
+kyverno_background_pdb_min_available: 1
+
+# Anti-affinity configuration for HA
+kyverno_anti_affinity_enabled: true
+
+# Webhook configuration
+kyverno_webhook_timeout: 10
+
+# Logging configuration
+kyverno_log_level: "2"
+
+# Enable/disable components
+kyverno_background_controller_enabled: true
+kyverno_cleanup_controller_enabled: true
+kyverno_reports_controller_enabled: true
+
+# Kubeconfig path (uses KUBECONFIG env var if not set)
+kubeconfig_path: "{{ ansible_env.HOME }}/.kube/config"
+
+# Helm timeout
+kyverno_helm_timeout: 600s
+
+# Wait for deployment to be ready
+kyverno_wait_for_ready: true
+
+# Policy deployment configuration
+kyverno_deploy_policies: true
+
+# Privileged namespaces - these namespaces are allowed to use hostPath volumes
+# and are protected from user deployments
+kyverno_privileged_namespaces:
+  - kube-system
+  - kube-public
+  - kube-node-lease
+  - rook-ceph
+  - azure-arc
+  - kubevirt
+  - kyverno
+
+# Blocked cluster roles - RoleBindings to these roles will be denied
+kyverno_blocked_cluster_roles:
+  - cluster-admin

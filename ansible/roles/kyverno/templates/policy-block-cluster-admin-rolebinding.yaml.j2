@@ -1,0 +1,72 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: block-cluster-admin-rolebindings
+  annotations:
+    policies.kyverno.io/title: Block ClusterRoleBindings to cluster-admin
+    policies.kyverno.io/category: Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Prevents creation of ClusterRoleBindings that grant cluster-admin
+      privileges except for azure-arc-operator. RoleBindings to privileged
+      roles are allowed in privileged system namespaces only.
+spec:
+  validationFailureAction: Enforce
+  background: false
+  rules:
+    - name: block-cluster-admin-bindings
+      match:
+        any:
+          - resources:
+              kinds:
+                - ClusterRoleBinding
+      exclude:
+        any:
+          - clusterRoles:
+              - cluster-admin
+              - system:masters
+      validate:
+        message: "Creating ClusterRoleBindings to '{{ '{{' }}request.object.roleRef.name{{ '}}' }}' is not allowed. Only azure-arc-operator can be bound to cluster-admin."
+        deny:
+          conditions:
+            all:
+              - key: "{{ '{{' }}request.object.roleRef.name{{ '}}' }}"
+                operator: AnyIn
+                value:
+{% for role in kyverno_blocked_cluster_roles %}
+                  - {{ role }}
+{% endfor %}
+              - key: "{{ '{{' }}request.object.metadata.name{{ '}}' }}"
+                operator: NotEquals
+                value: "azure-arc-operator"
+
+    - name: block-admin-rolebindings-in-non-privileged-namespaces
+      match:
+        any:
+          - resources:
+              kinds:
+                - RoleBinding
+      exclude:
+        any:
+          - clusterRoles:
+              - cluster-admin
+              - system:masters
+          - resources:
+              namespaces:
+{% for ns in kyverno_privileged_namespaces %}
+                - {{ ns }}
+{% endfor %}
+      validate:
+        message: "Creating RoleBindings to '{{ '{{' }}request.object.roleRef.name{{ '}}' }}' ClusterRole is not allowed in namespace '{{ '{{' }}request.namespace{{ '}}' }}'. Only privileged namespaces can have admin RoleBindings."
+        deny:
+          conditions:
+            all:
+              - key: "{{ '{{' }}request.object.roleRef.kind{{ '}}' }}"
+                operator: Equals
+                value: ClusterRole
+              - key: "{{ '{{' }}request.object.roleRef.name{{ '}}' }}"
+                operator: AnyIn
+                value:
+{% for role in kyverno_blocked_cluster_roles %}
+                  - {{ role }}
+{% endfor %}

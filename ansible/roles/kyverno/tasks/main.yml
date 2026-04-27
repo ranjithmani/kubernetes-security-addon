@@ -1,0 +1,141 @@
+---
+# Deploy Kyverno using Helm in HA mode
+
+- name: Check if Helm is installed
+  ansible.builtin.command: which helm
+  register: helm_check
+  changed_when: false
+  failed_when: helm_check.rc != 0
+  ignore_errors: true
+
+- name: Fail if Helm is not installed
+  ansible.builtin.fail:
+    msg: "Helm is required but not installed. Please install Helm first."
+  when: helm_check.rc != 0
+
+- name: Check if kubectl is available
+  ansible.builtin.command: kubectl version --client
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: kubectl_check
+  changed_when: false
+  failed_when: false
+
+- name: Fail if kubectl is not available
+  ansible.builtin.fail:
+    msg: "kubectl is required but not installed or not accessible."
+  when: kubectl_check.rc != 0
+
+- name: Add Kyverno Helm repository
+  ansible.builtin.command: helm repo add kyverno {{ kyverno_chart_repo }}
+  register: helm_repo_add
+  changed_when: "'has been added' in helm_repo_add.stdout"
+  failed_when: helm_repo_add.rc != 0 and 'already exists' not in helm_repo_add.stderr
+
+- name: Update Helm repositories
+  ansible.builtin.command: helm repo update
+  register: helm_repo_update
+  changed_when: false
+
+- name: Create Kyverno namespace
+  ansible.builtin.command: kubectl create namespace {{ kyverno_namespace }}
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: ns_create
+  changed_when: ns_create.rc == 0
+  failed_when: ns_create.rc != 0 and 'already exists' not in ns_create.stderr
+
+- name: Check if Kyverno is already installed
+  ansible.builtin.command: >
+    helm status {{ kyverno_release_name }}
+    --namespace {{ kyverno_namespace }}
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: kyverno_status
+  changed_when: false
+  failed_when: false
+
+- name: Generate Kyverno Helm values file
+  ansible.builtin.template:
+    src: values.yaml.j2
+    dest: /tmp/kyverno-values.yaml
+    mode: '0600'
+
+- name: Install Kyverno via Helm
+  ansible.builtin.command: >
+    helm upgrade --install {{ kyverno_release_name }} {{ kyverno_chart_name }}
+    --repo {{ kyverno_chart_repo }}
+    --namespace {{ kyverno_namespace }}
+    --version {{ kyverno_chart_version }}
+    --values /tmp/kyverno-values.yaml
+    --timeout {{ kyverno_helm_timeout }}
+    {% if kyverno_wait_for_ready %}--wait{% endif %}
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: kyverno_install
+  changed_when: "'has been upgraded' in kyverno_install.stdout or 'has been installed' in kyverno_install.stdout"
+
+- name: Display Kyverno installation result
+  ansible.builtin.debug:
+    msg: "{{ kyverno_install.stdout_lines }}"
+  when: kyverno_install is defined
+
+- name: Wait for Kyverno admission controller pods to be ready
+  ansible.builtin.command: >
+    kubectl wait --for=condition=ready pod
+    -l app.kubernetes.io/component=admission-controller
+    -n {{ kyverno_namespace }}
+    --timeout=300s
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: admission_ready
+  changed_when: false
+  when: kyverno_wait_for_ready
+
+- name: Wait for Kyverno background controller pods to be ready
+  ansible.builtin.command: >
+    kubectl wait --for=condition=ready pod
+    -l app.kubernetes.io/component=background-controller
+    -n {{ kyverno_namespace }}
+    --timeout=300s
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: background_ready
+  changed_when: false
+  when: kyverno_wait_for_ready and kyverno_background_controller_enabled
+
+- name: Verify Kyverno deployment
+  ansible.builtin.command: >
+    kubectl get pods -n {{ kyverno_namespace }} -o wide
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: kyverno_pods
+  changed_when: false
+
+- name: Display Kyverno pods status
+  ansible.builtin.debug:
+    msg: "{{ kyverno_pods.stdout_lines }}"
+
+- name: Verify Kyverno CRDs are installed
+  ansible.builtin.shell: >
+    kubectl get crd | grep kyverno
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  register: kyverno_crds
+  changed_when: false
+  failed_when: kyverno_crds.rc != 0
+
+- name: Display installed Kyverno CRDs
+  ansible.builtin.debug:
+    msg: "{{ kyverno_crds.stdout_lines }}"
+
+- name: Cleanup temporary values file
+  ansible.builtin.file:
+    path: /tmp/kyverno-values.yaml
+    state: absent
+  changed_when: false
+
+# Deploy Kyverno validation policies
+- name: Deploy Kyverno policies
+  ansible.builtin.include_tasks: deploy-policies.yml
+  when: kyverno_deploy_policies
